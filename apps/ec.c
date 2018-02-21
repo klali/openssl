@@ -214,8 +214,48 @@ int ec_main(int argc, char **argv)
     if (new_form)
         EC_KEY_set_conv_form(eckey, form);
 
-    if (new_asn1_flag)
+    if (new_asn1_flag) {
         EC_KEY_set_asn1_flag(eckey, asn1_flag);
+        if (asn1_flag == OPENSSL_EC_NAMED_CURVE) {
+            if (EC_GROUP_get_curve_name(group) == 0) {
+                EC_builtin_curve *curves = NULL;
+                size_t crv_len = 0;
+                size_t n = 0;
+
+                crv_len = EC_get_builtin_curves(NULL, 0);
+
+                curves = OPENSSL_malloc((int)(sizeof(EC_builtin_curve) * crv_len));
+
+                if (curves == NULL) {
+                    perror(outfile);
+                    goto end;
+                }
+
+                if (EC_get_builtin_curves(curves, crv_len) == 0) {
+                    perror(outfile);
+                    OPENSSL_free(curves);
+                    goto end;
+                }
+
+                for (n = 0; n < crv_len; n++) {
+                    EC_GROUP *n_group = EC_GROUP_new_by_curve_name(curves[n].nid);
+                    if (n_group == NULL) {
+                        perror(outfile);
+                        OPENSSL_free(curves);
+                        goto end;
+                    }
+                    if (EC_GROUP_cmp(group, n_group, NULL) == 0) {
+                        EC_GROUP_set_asn1_flag(n_group, asn1_flag);
+                        EC_KEY_set_group(eckey, n_group);
+                        group = n_group;
+                        break;
+                    }
+                    EC_GROUP_free(n_group);
+                }
+                OPENSSL_free(curves);
+            }
+        }
+    }
 
     if (no_public)
         EC_KEY_set_enc_flags(eckey, EC_PKEY_NO_PUBKEY);
